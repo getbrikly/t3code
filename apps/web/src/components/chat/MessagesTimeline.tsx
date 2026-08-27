@@ -1194,7 +1194,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "work" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
-                  row.kind === "thinking"
+                  row.kind === "thinking" ||
+                  row.kind === "reasoning"
                 ? "pb-2"
                 : "pb-4",
         (row.kind === "message" && row.message.role === "assistant") ||
@@ -1227,6 +1228,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       ) : null}
       {row.kind === "assistant-meta" ? <AssistantMetaTimelineRow row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
+      {row.kind === "reasoning" ? <ReasoningTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "thinking" ? <ThinkingTimelineRow /> : null}
     </div>
@@ -1658,6 +1660,23 @@ function AssistantMessageMeta({
           </TooltipPopup>
         </Tooltip>
       )}
+    </div>
+  );
+}
+
+/** A finished thinking summary: muted prose sitting between the steps it explains. */
+function ReasoningTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "reasoning" }> }) {
+  const ctx = use(TimelineRowCtx);
+
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <ChatMarkdown
+        text={row.text}
+        cwd={ctx.markdownCwd}
+        threadRef={ctx.threadRef ?? undefined}
+        skills={ctx.skills}
+        className="text-muted-foreground"
+      />
     </div>
   );
 }

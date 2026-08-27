@@ -128,6 +128,14 @@ export interface LatestProposedPlanState {
   implementationThreadId: ThreadId | null;
 }
 
+/** One finished thinking summary, shown as quiet prose before the work it explains. */
+export interface ReasoningEntry {
+  id: string;
+  createdAt: string;
+  turnId: TurnId | null;
+  text: string;
+}
+
 export type TimelineEntry =
   | {
       id: string;
@@ -146,12 +154,19 @@ export type TimelineEntry =
       kind: "work";
       createdAt: string;
       entry: WorkLogEntry;
+    }
+  | {
+      id: string;
+      kind: "reasoning";
+      createdAt: string;
+      entry: ReasoningEntry;
     };
 
 export interface TimelineEntriesProjection {
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly proposedPlans: ReadonlyArray<ProposedPlan>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
+  readonly reasoningEntries: ReadonlyArray<ReasoningEntry>;
   readonly entries: TimelineEntry[];
 }
 
@@ -460,6 +475,8 @@ export function deriveWorkLogEntries(
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
     if (activity.kind === "turn.plan.updated") continue;
+    // Thinking summaries are prose rows (deriveReasoningEntries), not work.
+    if (activity.kind === "reasoning.completed") continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
@@ -478,6 +495,26 @@ function isNoContentRuntimeWarning(activity: OrchestrationThreadActivity): boole
     activity.kind === "runtime.warning" &&
     activity.summary.endsWith("(no displayable text content)")
   );
+}
+
+export function deriveReasoningEntries(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): ReasoningEntry[] {
+  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const entries: ReasoningEntry[] = [];
+  for (const activity of ordered) {
+    if (activity.kind !== "reasoning.completed") continue;
+    const payload = asRecord(activity.payload);
+    const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+    if (text.length === 0) continue;
+    entries.push({
+      id: activity.id,
+      createdAt: activity.createdAt,
+      turnId: activity.turnId,
+      text,
+    });
+  }
+  return entries;
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -1404,6 +1441,15 @@ function timelineEntryFromWork(workEntry: WorkLogEntry): TimelineEntry {
   };
 }
 
+function timelineEntryFromReasoning(reasoningEntry: ReasoningEntry): TimelineEntry {
+  return {
+    id: reasoningEntry.id,
+    kind: "reasoning",
+    createdAt: reasoningEntry.createdAt,
+    entry: reasoningEntry,
+  };
+}
+
 function compareTimelineEntriesByCreatedAt(left: TimelineEntry, right: TimelineEntry): number {
   return left.createdAt.localeCompare(right.createdAt);
 }
@@ -1416,6 +1462,8 @@ function timelineEntrySourceOrder(entry: TimelineEntry): number {
       return 1;
     case "work":
       return 2;
+    case "reasoning":
+      return 3;
   }
 }
 
@@ -1423,8 +1471,9 @@ function shouldTakePreviousTimelineEntry(previous: TimelineEntry, suffix: Timeli
   const createdAtComparison = compareTimelineEntriesByCreatedAt(previous, suffix);
   if (createdAtComparison !== 0) return createdAtComparison < 0;
   // The original full derivation sorts a source-ordered array with a stable
-  // comparator. On a tie, messages precede plans, plans precede work, and an
-  // older item in the same source array precedes a newly appended item.
+  // comparator. On a tie, messages precede plans, plans precede work, work
+  // precedes reasoning, and an older item in the same source array precedes a
+  // newly appended item.
   return timelineEntrySourceOrder(previous) <= timelineEntrySourceOrder(suffix);
 }
 
@@ -1602,22 +1651,28 @@ export function deriveTimelineEntriesWithState(
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
   previous: TimelineEntriesProjection | null = null,
+  reasoningEntries: ReadonlyArray<ReasoningEntry> = [],
 ): TimelineEntriesProjection {
   if (
     previous !== null &&
     previous.proposedPlans.length === proposedPlans.length &&
     previous.workEntries.length === workEntries.length &&
+    previous.reasoningEntries.length === reasoningEntries.length &&
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
-    hasExactArrayPrefix(previous.workEntries, workEntries)
+    hasExactArrayPrefix(previous.workEntries, workEntries) &&
+    hasExactArrayPrefix(previous.reasoningEntries, reasoningEntries)
   ) {
     const entries = replaceStreamingTimelineMessages(messages, previous);
-    if (entries !== null) return { messages, proposedPlans, workEntries, entries };
+    if (entries !== null) {
+      return { messages, proposedPlans, workEntries, reasoningEntries, entries };
+    }
   }
   const canAppend =
     previous !== null &&
     hasExactArrayPrefix(previous.messages, messages) &&
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
-    hasExactArrayPrefix(previous.workEntries, workEntries);
+    hasExactArrayPrefix(previous.workEntries, workEntries) &&
+    hasExactArrayPrefix(previous.reasoningEntries, reasoningEntries);
 
   if (canAppend) {
     const messageRows = messages.slice(previous.messages.length).map(timelineEntryFromMessage);
@@ -1625,13 +1680,17 @@ export function deriveTimelineEntriesWithState(
       .slice(previous.proposedPlans.length)
       .map(timelineEntryFromProposedPlan);
     const workRows = workEntries.slice(previous.workEntries.length).map(timelineEntryFromWork);
-    const suffix = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
+    const reasoningRows = reasoningEntries
+      .slice(previous.reasoningEntries.length)
+      .map(timelineEntryFromReasoning);
+    const suffix = [...messageRows, ...proposedPlanRows, ...workRows, ...reasoningRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     );
     return {
       messages,
       proposedPlans,
       workEntries,
+      reasoningEntries,
       entries: mergeTimelineEntrySuffix(previous.entries, suffix),
     };
   }
@@ -1639,11 +1698,13 @@ export function deriveTimelineEntriesWithState(
   const messageRows = messages.map(timelineEntryFromMessage);
   const proposedPlanRows = proposedPlans.map(timelineEntryFromProposedPlan);
   const workRows = workEntries.map(timelineEntryFromWork);
+  const reasoningRows = reasoningEntries.map(timelineEntryFromReasoning);
   return {
     messages,
     proposedPlans,
     workEntries,
-    entries: [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
+    reasoningEntries,
+    entries: [...messageRows, ...proposedPlanRows, ...workRows, ...reasoningRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     ),
   };
@@ -1653,8 +1714,15 @@ export function deriveTimelineEntries(
   messages: ReadonlyArray<ChatMessage>,
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
+  reasoningEntries: ReadonlyArray<ReasoningEntry> = [],
 ): TimelineEntry[] {
-  return deriveTimelineEntriesWithState(messages, proposedPlans, workEntries).entries;
+  return deriveTimelineEntriesWithState(
+    messages,
+    proposedPlans,
+    workEntries,
+    null,
+    reasoningEntries,
+  ).entries;
 }
 
 export function inferCheckpointTurnCountByTurnId(

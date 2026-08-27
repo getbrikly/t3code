@@ -142,3 +142,40 @@ describe("runtimeEventToActivities tool streaming persistence", () => {
     expect(payload.data).toEqual(streamingData);
   });
 });
+
+describe("runtimeEventToActivities reasoning", () => {
+  it("persists a completed thinking summary as one reasoning activity", () => {
+    const event = {
+      ...base,
+      type: "item.completed",
+      eventId: EventId.make("evt-reasoning"),
+      payload: {
+        itemType: "reasoning",
+        status: "completed",
+        title: "Thinking",
+        detail: "The tests are green; starting the baseline run.",
+      },
+    } satisfies ProviderRuntimeEvent;
+
+    const activities = runtimeEventToActivities(event);
+
+    expect(activities).toHaveLength(1);
+    expect(activities[0]?.kind).toBe("reasoning.completed");
+    expect(activities[0]?.tone).toBe("info");
+    expect(activities[0]?.payload).toEqual({
+      itemType: "reasoning",
+      text: "The tests are green; starting the baseline run.",
+    });
+  });
+
+  it("drops reasoning items without summary text", () => {
+    const event = {
+      ...base,
+      type: "item.completed",
+      eventId: EventId.make("evt-reasoning-empty"),
+      payload: { itemType: "reasoning", status: "completed" },
+    } satisfies ProviderRuntimeEvent;
+
+    expect(runtimeEventToActivities(event)).toEqual([]);
+  });
+});

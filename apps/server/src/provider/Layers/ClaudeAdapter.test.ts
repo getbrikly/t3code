@@ -1807,6 +1807,107 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("emits one reasoning item when a summarized thinking block closes", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 9).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      const turn = yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "hello",
+        attachments: [],
+      });
+
+      const streamEvent = (uuid: string, event: Record<string, unknown>) =>
+        harness.query.emit({
+          type: "stream_event",
+          session_id: "sdk-session-reasoning",
+          uuid,
+          parent_tool_use_id: null,
+          event,
+        } as unknown as SDKMessage);
+
+      // Thinking display omitted: the block opens and closes without text.
+      streamEvent("thinking-empty-start", {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "", signature: "" },
+      });
+      streamEvent("thinking-empty-stop", { type: "content_block_stop", index: 0 });
+
+      // Thinking display summarized: the summary streams in, then closes.
+      streamEvent("thinking-start", {
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "thinking", thinking: "", signature: "" },
+      });
+      streamEvent("thinking-delta-1", {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "thinking_delta", thinking: "Found a bug: " },
+      });
+      streamEvent("thinking-delta-2", {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "thinking_delta", thinking: "the path has a trailing `?`. " },
+      });
+      streamEvent("thinking-signature", {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "signature_delta", signature: "sig" },
+      });
+      streamEvent("thinking-stop", { type: "content_block_stop", index: 1 });
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-reasoning",
+        uuid: "result-reasoning",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      assert.deepEqual(
+        runtimeEvents.map((event) => event.type),
+        [
+          "session.started",
+          "session.configured",
+          "session.state.changed",
+          "turn.started",
+          "thread.started",
+          "content.delta",
+          "content.delta",
+          "item.completed",
+          "turn.completed",
+        ],
+      );
+
+      const reasoning = runtimeEvents.find((event) => event.type === "item.completed");
+      assert.equal(reasoning?.type, "item.completed");
+      if (reasoning?.type === "item.completed") {
+        assert.equal(reasoning.payload.itemType, "reasoning");
+        assert.equal(reasoning.payload.status, "completed");
+        assert.equal(reasoning.payload.detail, "Found a bug: the path has a trailing `?`.");
+        assert.equal(String(reasoning.turnId), String(turn.turnId));
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("falls back to a default plan step label for blank TodoWrite content", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

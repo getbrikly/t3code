@@ -361,6 +361,12 @@ export type MessagesTimelineRow =
       kind: "thinking";
       id: string;
       createdAt: string | null;
+    }
+  | {
+      kind: "reasoning";
+      id: string;
+      createdAt: string;
+      text: string;
     };
 
 export interface StableMessagesTimelineRowsState {
@@ -497,7 +503,10 @@ function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
   if (entry.kind === "proposed-plan") {
     return entry.proposedPlan.turnId;
   }
-  return entry.kind === "work" ? (entry.entry.turnId ?? null) : null;
+  if (entry.kind === "work" || entry.kind === "reasoning") {
+    return entry.entry.turnId ?? null;
+  }
+  return null;
 }
 
 /**
@@ -573,7 +582,7 @@ function deriveTurnFolds(input: {
     const turnId =
       entry.kind === "message" && entry.message.role === "assistant"
         ? (entry.message.turnId ?? null)
-        : entry.kind === "work"
+        : entry.kind === "work" || entry.kind === "reasoning"
           ? (entry.entry.turnId ?? null)
           : null;
     if (!turnId) {
@@ -1160,6 +1169,19 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "reasoning") {
+      nextRows.push({
+        kind: "reasoning",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        text: timelineEntry.entry.text,
+      });
+      // A thinking summary already narrates the active turn, so it stands in
+      // for the trailing "Thinking..." placeholder row.
+      hasActivityRow ||= input.isWorking && entryBelongsToActiveTurn(timelineEntry, index);
+      continue;
+    }
+
     const assistantResponseStillInProgress =
       timelineEntry.message.role === "assistant" &&
       timelineEntry.message.turnId !== null &&
@@ -1336,6 +1358,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
+
+    case "reasoning": {
+      const br = b as typeof a;
+      return a.createdAt === br.createdAt && a.text === br.text;
+    }
 
     case "work": {
       const bw = b as typeof a;

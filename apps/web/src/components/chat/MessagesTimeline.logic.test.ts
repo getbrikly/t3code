@@ -1087,6 +1087,97 @@ describe("resolveAssistantMessageCopyState", () => {
   });
 });
 
+describe("deriveMessagesTimelineRows reasoning", () => {
+  const userEntry = {
+    id: "user-1-entry",
+    kind: "message",
+    createdAt: "2026-01-01T00:00:00Z",
+    message: {
+      id: "user-1" as never,
+      role: "user",
+      text: "Fix the bug",
+      turnId: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      streaming: false,
+    },
+  } as const;
+  const reasoningEntry = {
+    id: "reasoning-1",
+    kind: "reasoning",
+    createdAt: "2026-01-01T00:00:05Z",
+    entry: {
+      id: "reasoning-1",
+      createdAt: "2026-01-01T00:00:05Z",
+      turnId: "turn-1" as never,
+      text: "The trailing `?` breaks the path; fixing the extension logic.",
+    },
+  } as const;
+  const finalEntry = {
+    id: "assistant-final-entry",
+    kind: "message",
+    createdAt: "2026-01-01T00:00:20Z",
+    message: {
+      id: "assistant-final" as never,
+      role: "assistant",
+      text: "Fixed.",
+      turnId: "turn-1" as never,
+      createdAt: "2026-01-01T00:00:20Z",
+      updatedAt: "2026-01-01T00:00:30Z",
+      streaming: false,
+    },
+  } as const;
+
+  it("shows the summary as its own row and counts it as visible turn content", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [userEntry, reasoningEntry],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:01Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:01Z",
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["message", "working", "reasoning"]);
+    const reasoningRow = rows.find((row) => row.kind === "reasoning");
+    expect(reasoningRow?.kind === "reasoning" && reasoningRow.text).toBe(reasoningEntry.entry.text);
+    expect(rows.some((row) => row.kind === "thinking")).toBe(false);
+  });
+
+  it("folds the summary with the rest of the turn once it settles", () => {
+    const input = {
+      timelineEntries: [userEntry, reasoningEntry, finalEntry],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:01Z",
+        completedAt: "2026-01-01T00:00:30Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    } as const;
+
+    expect(deriveMessagesTimelineRows(input).map((row) => row.kind)).toEqual([
+      "message",
+      "turn-fold",
+      "message",
+    ]);
+    expect(
+      deriveMessagesTimelineRows({
+        ...input,
+        expandedTurnIds: new Set(["turn-1" as never]),
+      }).map((row) => row.kind),
+    ).toEqual(["message", "turn-fold", "reasoning", "message"]);
+  });
+});
+
 describe("deriveMessagesTimelineRows", () => {
   it("keeps context compaction visible outside folded work", () => {
     const rows = deriveMessagesTimelineRows({

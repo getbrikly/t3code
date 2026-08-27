@@ -113,6 +113,7 @@ import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   findLatestProposedPlan,
+  deriveReasoningEntries,
   deriveWorkLogEntries,
   hasActionableProposedPlan,
   isLatestTurnSettled,
@@ -2575,6 +2576,10 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
+  const reasoningEntries = useMemo(
+    () => deriveReasoningEntries(threadActivities),
+    [threadActivities],
+  );
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
   // until orchestration-v2 lands (source precedence lives in the derive).
@@ -3064,6 +3069,7 @@ export default function ChatView(props: ChatViewProps) {
       activeThread?.proposedPlans ?? [],
       workLogEntries,
       previous?.threadKey === activeThreadKey ? previous.projection : null,
+      reasoningEntries,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
     return projection.entries;
@@ -3071,6 +3077,7 @@ export default function ChatView(props: ChatViewProps) {
     timelineProjectionRef,
     activeThreadKey,
     activeThread?.proposedPlans,
+    reasoningEntries,
     timelineMessages,
     workLogEntries,
   ]);

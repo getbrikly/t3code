@@ -13,6 +13,7 @@ import {
   createMessageAttachmentPreviewProjector,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveReasoningEntries,
   deriveTimelineEntries,
   deriveTimelineEntriesWithState,
   deriveWorkLogEntries,
@@ -447,6 +448,61 @@ describe("workEntryIndicatesToolNeutralStatus", () => {
       expect(workEntryIndicatesToolNeutralStatus(entries[0]!)).toBe(true);
     },
   );
+});
+
+describe("deriveReasoningEntries", () => {
+  it("keeps completed thinking summaries in order and out of the work log", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "reasoning-2",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "reasoning.completed",
+        summary: "Thinking",
+        tone: "info",
+        turnId: "turn-1",
+        payload: { itemType: "reasoning", text: "Tests are green; starting the baseline run." },
+      }),
+      makeActivity({
+        id: "reasoning-blank",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "reasoning.completed",
+        summary: "Thinking",
+        tone: "info",
+        payload: { itemType: "reasoning", text: "   " },
+      }),
+      makeActivity({
+        id: "reasoning-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "reasoning.completed",
+        summary: "Thinking",
+        tone: "info",
+        turnId: "turn-1",
+        payload: { itemType: "reasoning", text: "Found the bug in the path logic." },
+      }),
+      makeActivity({
+        id: "tool-complete",
+        createdAt: "2026-02-23T00:00:04.000Z",
+        summary: "Tool call complete",
+        kind: "tool.completed",
+      }),
+    ];
+
+    expect(deriveReasoningEntries(activities)).toEqual([
+      {
+        id: "reasoning-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-1",
+        text: "Found the bug in the path logic.",
+      },
+      {
+        id: "reasoning-2",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        turnId: "turn-1",
+        text: "Tests are green; starting the baseline run.",
+      },
+    ]);
+    expect(deriveWorkLogEntries(activities).map((entry) => entry.id)).toEqual(["tool-complete"]);
+  });
 });
 
 describe("deriveWorkLogEntries", () => {

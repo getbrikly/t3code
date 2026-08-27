@@ -827,6 +827,27 @@ export function runtimeEventToActivities(
     }
 
     case "item.completed": {
+      // A thinking summary is one short paragraph, persisted whole once the
+      // provider closes the block: no per-delta rows, nothing while it is
+      // still streaming.
+      if (event.payload.itemType === "reasoning") {
+        const text = event.payload.detail?.trim();
+        if (!text) {
+          return [];
+        }
+        return [
+          {
+            id: event.eventId,
+            createdAt: event.createdAt,
+            tone: "info",
+            kind: "reasoning.completed",
+            summary: "Thinking",
+            payload: { itemType: "reasoning", text },
+            turnId: toTurnId(event.turnId) ?? null,
+            ...maybeSequence,
+          },
+        ];
+      }
       if (!isToolLifecycleItemType(event.payload.itemType)) {
         return [];
       }

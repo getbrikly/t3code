@@ -61,6 +61,17 @@ Claude Code holds the turn until that window reopens, so it can keep showing as
 working. Wait for the reset, or stop the turn and continue later. The warning's
 timestamp shows when the displayed wait started.
 
+## Show Thinking Summaries
+
+Claude can explain what it is doing between steps, the way Claude Code shows `(summarized)`
+notes in the terminal. In Settings, open your Claude provider and turn on **Show thinking
+summaries**. Each summary appears in the thread as a short paragraph before the work it explains,
+and folds away with the rest of the turn once the response is complete.
+
+Summaries are produced by Claude's API for models that support them (Opus 4.7 and newer). Older
+models keep showing their full thinking text instead. The switch is off by default, matching Claude
+Code.
+
 ## Skills
 
 Claude skills come from the config directory's `skills` folder and the project's

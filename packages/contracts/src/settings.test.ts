@@ -150,6 +150,22 @@ describe("ClientSettings load balancing", () => {
   });
 });
 
+describe("ClaudeSettings thinking summaries", () => {
+  it("defaults to off, matching Claude Code", () => {
+    expect(decodeClaudeSettings({}).showThinkingSummaries).toBe(false);
+  });
+
+  it("round-trips the toggle through the settings patch", () => {
+    expect(
+      decodeServerSettingsPatch({ providers: { claudeAgent: { showThinkingSummaries: true } } })
+        .providers?.claudeAgent?.showThinkingSummaries,
+    ).toBe(true);
+    expect(() =>
+      decodeServerSettingsPatch({ providers: { claudeAgent: { showThinkingSummaries: "yes" } } }),
+    ).toThrow();
+  });
+});
+
 describe("ClientSettings word wrap", () => {
   it("defaults word wrap on", () => {
     expect(decodeClientSettings({}).wordWrap).toBe(true);
