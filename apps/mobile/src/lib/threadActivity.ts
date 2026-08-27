@@ -405,6 +405,8 @@ function deriveWorkLogEntries(
     if (activity.kind === "context-window.updated") continue;
     // Thinking summaries have no mobile row yet; keep them out of the work log.
     if (activity.kind === "reasoning.completed") continue;
+    // Composer prompt suggestions have no mobile surface yet.
+    if (activity.kind === "prompt-suggestion") continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;

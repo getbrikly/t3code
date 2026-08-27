@@ -73,6 +73,7 @@ import {
   type TerminalContextDraft,
 } from "~/lib/terminalContext";
 import { cn, isMacPlatform } from "~/lib/utils";
+import { Kbd } from "~/components/ui/kbd";
 import { basenameOfPath } from "~/pierre-icons";
 import {
   COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME,
@@ -919,6 +920,11 @@ interface ComposerPromptEditorProps {
   disabled: boolean;
   placeholder: string;
   containerClassName?: string;
+  /**
+   * Provider-predicted next prompt. Rendered as ghost text in place of the
+   * placeholder while the editor is empty; the parent accepts it on Tab.
+   */
+  promptSuggestion?: string | null;
   className?: string;
   placeholderClassName?: string;
   onRemoveTerminalContext: (contextId: string) => void;
@@ -1636,6 +1642,7 @@ function ComposerPromptEditorInner({
   disabled,
   placeholder,
   containerClassName,
+  promptSuggestion,
   className,
   placeholderClassName,
   onRemoveTerminalContext,
@@ -1983,7 +1990,11 @@ function ComposerPromptEditorInner({
                   className,
                 )}
                 data-testid="composer-editor"
-                aria-placeholder={placeholder}
+                aria-placeholder={
+                  promptSuggestion
+                    ? `Suggested: ${promptSuggestion}. Press Tab to accept.`
+                    : placeholder
+                }
                 placeholder={<span />}
                 onKeyDown={(event) => {
                   if (
@@ -2029,7 +2040,18 @@ function ComposerPromptEditorInner({
               />
             }
             placeholder={
-              terminalContexts.length > 0 ? null : (
+              terminalContexts.length > 0 ? null : promptSuggestion ? (
+                <div
+                  className={cn(
+                    "pointer-events-none absolute inset-0 flex items-baseline gap-2 leading-relaxed text-placeholder",
+                    placeholderClassName,
+                  )}
+                  data-testid="composer-prompt-suggestion"
+                >
+                  <span className="min-w-0 truncate">{promptSuggestion}</span>
+                  <Kbd className="shrink-0">Tab</Kbd>
+                </div>
+              ) : (
                 <div
                   className={cn(
                     "pointer-events-none absolute inset-0 leading-relaxed text-placeholder/75",
@@ -2066,6 +2088,7 @@ export function ComposerPromptEditor({
   disabled,
   placeholder,
   containerClassName,
+  promptSuggestion,
   className,
   placeholderClassName,
   onRemoveTerminalContext,
@@ -2128,6 +2151,7 @@ export function ComposerPromptEditor({
         {...(onPageScrollRelease ? { onPageScrollRelease } : {})}
         {...(className ? { className } : {})}
         {...(placeholderClassName ? { placeholderClassName } : {})}
+        {...(promptSuggestion ? { promptSuggestion } : {})}
       />
     </LexicalComposer>
   );

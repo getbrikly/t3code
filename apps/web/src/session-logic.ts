@@ -477,6 +477,7 @@ export function deriveWorkLogEntries(
     if (activity.kind === "turn.plan.updated") continue;
     // Thinking summaries are prose rows (deriveReasoningEntries), not work.
     if (activity.kind === "reasoning.completed") continue;
+    if (activity.kind === "prompt-suggestion") continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;

@@ -3621,6 +3621,16 @@ describe("ProviderRuntimeIngestion", () => {
     });
 
     harness.emit({
+      type: "turn.prompt-suggestion",
+      eventId: asEventId("evt-turn-prompt-suggestion"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-p1"),
+      payload: { suggestion: "Run the tests again" },
+    });
+
+    harness.emit({
       type: "turn.diff.updated",
       eventId: asEventId("evt-turn-diff-updated"),
       provider: ProviderDriverKind.make("codex"),
@@ -3646,6 +3656,9 @@ describe("ProviderRuntimeIngestion", () => {
         entry.activities.some(
           (activity: ProviderRuntimeTestActivity) => activity.kind === "runtime.warning",
         ) &&
+        entry.activities.some(
+          (activity: ProviderRuntimeTestActivity) => activity.kind === "prompt-suggestion",
+        ) &&
         entry.checkpoints.some(
           (checkpoint: ProviderRuntimeTestCheckpoint) => checkpoint.turnId === "turn-p1",
         ),
@@ -3662,6 +3675,13 @@ describe("ProviderRuntimeIngestion", () => {
         : undefined;
     expect(planActivity?.kind).toBe("turn.plan.updated");
     expect(Array.isArray(planPayload?.plan)).toBe(true);
+
+    const suggestionActivity = thread.activities.find(
+      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-turn-prompt-suggestion",
+    );
+    expect(suggestionActivity?.kind).toBe("prompt-suggestion");
+    expect(suggestionActivity?.turnId).toBe("turn-p1");
+    expect(suggestionActivity?.payload).toEqual({ suggestion: "Run the tests again" });
 
     const toolUpdate = thread.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-item-updated",

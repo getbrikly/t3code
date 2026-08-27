@@ -332,6 +332,12 @@ interface ClaudeSessionContext {
   /** Task ids that have started and not yet reached a terminal state. */
   readonly liveTaskIds: Set<string>;
   turnState: ClaudeTurnState | undefined;
+  /**
+   * Turn id of the most recently completed turn. `prompt_suggestion` arrives
+   * after `result` (turnState is already cleared), so the suggestion is
+   * attributed to this turn.
+   */
+  lastCompletedTurnId: TurnId | undefined;
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
@@ -2671,6 +2677,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
 
     const updatedAt = yield* nowIso;
+    context.lastCompletedTurnId = turnState.turnId;
     context.turnState = undefined;
     context.session = {
       ...context.session,
@@ -2680,6 +2687,40 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ...(status === "failed" && errorMessage ? { lastError: errorMessage } : {}),
     };
     yield* updateResumeCursor(context);
+  });
+
+  const handlePromptSuggestion = Effect.fn("handlePromptSuggestion")(function* (
+    context: ClaudeSessionContext,
+    message: Extract<SDKMessage, { type: "prompt_suggestion" }>,
+  ) {
+    const suggestion = message.suggestion.trim();
+    if (suggestion.length === 0) {
+      return;
+    }
+    // The SDK emits the suggestion after `result`, i.e. after turn.completed
+    // cleared turnState. Attribute it to the turn that just finished, never to
+    // a turn the user may already have started meanwhile: that turn's own
+    // suggestion (if any) follows its own result.
+    const turnId = context.lastCompletedTurnId;
+    if (!turnId) {
+      return;
+    }
+    const stamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      type: "turn.prompt-suggestion",
+      eventId: stamp.eventId,
+      provider: PROVIDER,
+      createdAt: stamp.createdAt,
+      threadId: context.session.threadId,
+      turnId,
+      payload: { suggestion },
+      providerRefs: nativeProviderRefs(context),
+      raw: {
+        source: "claude.sdk.message" as const,
+        method: "claude/prompt_suggestion",
+        payload: message,
+      },
+    });
   });
 
   const handleStreamEvent = Effect.fn("handleStreamEvent")(function* (
@@ -4015,10 +4056,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       case "rate_limit_event":
         yield* handleSdkTelemetryMessage(context, message);
         return;
-      // Composer prompt suggestions have no T3 surface; consumed deliberately.
+      case "prompt_suggestion":
+        yield* handlePromptSuggestion(context, message);
+        return;
       // `conversation_reset` announces a CLI-side conversation id swap
       // (e.g. /clear); T3 keeps its own thread identity and resume cursor.
-      case "prompt_suggestion":
       case "conversation_reset":
         return;
       default: {
@@ -4761,6 +4803,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
+        // Opt in to the SDK's predicted next prompt (one `prompt_suggestion`
+        // after each turn's `result`). The user's own Claude settings still
+        // apply: `promptSuggestionEnabled: false` in settings.json or
+        // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false suppresses them.
+        promptSuggestions: true,
         canUseTool,
         onUserDialog,
         supportedDialogKinds: ["resume_return"],
@@ -4863,6 +4910,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         turnState: undefined,
         lastKnownContextWindow: initialContextWindow,
         lastKnownTokenUsage: undefined,
+        lastCompletedTurnId: undefined,
         lastKnownTotalProcessedTokens: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,

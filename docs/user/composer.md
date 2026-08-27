@@ -94,6 +94,17 @@ recording and preserves your existing draft.
 Transcription runs on your device. T3 Code deletes the temporary audio after
 transcription or cancellation; only the message text is sent when you submit.
 
+## Suggested next prompt
+
+After a Claude turn finishes, T3 Code can show Claude's predicted next prompt as faded text in the
+empty composer. Press `Tab` to accept it into the composer, then edit or send it as usual. Start
+typing to ignore it. The suggestion disappears once you send a message or a new turn starts.
+
+Suggestions come from Claude Code itself and follow your Claude settings: turning off **Prompt
+suggestions** in Claude Code (`promptSuggestionEnabled: false` in `settings.json`, or the
+`CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` environment variable) turns them off in T3 Code too.
+Other providers do not offer suggestions yet.
+
 ## Commands and skills
 
 Type `/` for commands or `$` to add a skill from the selected environment and
