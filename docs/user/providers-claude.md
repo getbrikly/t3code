@@ -65,8 +65,9 @@ timestamp shows when the displayed wait started.
 
 Claude can explain what it is doing between steps, the way Claude Code shows `(summarized)`
 notes in the terminal. In Settings, open your Claude provider and turn on **Show thinking
-summaries**. Each summary appears in the thread as a short paragraph before the work it explains,
-and folds away with the rest of the turn once the response is complete.
+summaries**. Each summary appears in the thread before the work it explains, trimmed to a few
+lines with **Show more** for the rest, and folds away with the rest of the turn once the response
+is complete.
 
 Summaries are produced by Claude's API for models that support them (Opus 4.7 and newer). Older
 models keep showing their full thinking text instead. The switch is off by default, matching Claude

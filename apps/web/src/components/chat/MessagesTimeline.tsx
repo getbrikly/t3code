@@ -1664,19 +1664,44 @@ function AssistantMessageMeta({
   );
 }
 
-/** A finished thinking summary: muted prose sitting between the steps it explains. */
+/**
+ * A finished thinking summary: muted prose sitting between the steps it
+ * explains. API summaries run long, so the row clamps to a few lines and
+ * offers the rest on demand; expansion is per-mount, like the CLI's glance.
+ */
 function ReasoningTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "reasoning" }> }) {
   const ctx = use(TimelineRowCtx);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body || expanded) return;
+    setClamped(body.scrollHeight > body.clientHeight + 1);
+  }, [expanded, row.text]);
 
   return (
     <div className="min-w-0 px-1 py-0.5">
-      <ChatMarkdown
-        text={row.text}
-        cwd={ctx.markdownCwd}
-        threadRef={ctx.threadRef ?? undefined}
-        skills={ctx.skills}
-        className="text-muted-foreground"
-      />
+      <div ref={bodyRef} className={expanded ? undefined : "line-clamp-3"}>
+        <ChatMarkdown
+          text={row.text}
+          cwd={ctx.markdownCwd}
+          threadRef={ctx.threadRef ?? undefined}
+          skills={ctx.skills}
+          className="text-muted-foreground"
+        />
+      </div>
+      {clamped || expanded ? (
+        <button
+          type="button"
+          data-scroll-anchor-ignore
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-0.5 cursor-pointer text-xs text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
     </div>
   );
 }
