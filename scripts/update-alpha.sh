@@ -50,7 +50,8 @@ if (( rebase )); then
 fi
 
 echo "==> pnpm install"
-pnpm install --frozen-lockfile
+# confirmModulesPurge: a Node or pnpm bump otherwise stops on a TTY prompt.
+pnpm install --frozen-lockfile --config.confirmModulesPurge=false
 
 echo "==> building app (zip target)"
 node scripts/build-desktop-artifact.ts --platform mac --target zip --arch arm64
