@@ -7,6 +7,7 @@ import * as CursorSdk from "@t3tools/provider-cursor/server/CursorSdk";
 import * as CursorKeychain from "@t3tools/provider-cursor/server/CursorKeychain";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import * as PromptSuggestions from "../orchestration-v2/PromptSuggestions.ts";
 
 export type ProviderOrchestrationAdapterInfrastructure =
   | ClaudeAdapterV2.ClaudeAgentSdkQueryRunner
@@ -16,7 +17,10 @@ export type ProviderOrchestrationAdapterInfrastructure =
   | CursorKeychain.CursorKeychain
   | IdAllocator.IdAllocatorV2;
 
-/** Reuse the continuation worker's exact layer reference so memoization shares one queue. */
+/**
+ * Reuse the continuation worker's exact layer reference so memoization shares one queue.
+ * `PromptSuggestions.layer` likewise must be the reference the WebSocket handlers read from.
+ */
 export const layer = Layer.mergeAll(
   ClaudeAdapterV2.layerQueryRunner,
   CodexAdapterV2.layerAppServerClientFactory,
@@ -24,4 +28,5 @@ export const layer = Layer.mergeAll(
   CursorKeychain.layer,
   IdAllocator.layer,
   ProviderContinuationRequests.layer,
+  PromptSuggestions.layer,
 );

@@ -163,6 +163,7 @@ import {
   shouldPersistProviderEvent,
 } from "../../provider/EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as PromptSuggestions from "../PromptSuggestions.ts";
 import {
   claudeRateLimitEventToUpdate,
   type ClaudeScopedLimitNames,
@@ -1532,6 +1533,11 @@ export function makeClaudeQueryOptions(input: {
         ? "bypassPermissions"
         : (input.permissionMode ?? "default")),
     includePartialMessages: true,
+    // Claude predicts the user's next prompt after each turn (one
+    // `prompt_suggestion` after `result`). The user's own Claude settings
+    // still apply: `promptSuggestionEnabled: false` or
+    // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false suppress it.
+    promptSuggestions: true,
     ...(compiledSelection.effort === undefined
       ? {}
       : {
@@ -4315,6 +4321,8 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+  /** Ephemeral store for Claude's predicted next prompt; defaults to dropping it. */
+  readonly promptSuggestions?: Pick<PromptSuggestions.PromptSuggestionsShape, "set" | "clear">;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -4379,6 +4387,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       };
     },
   );
+  const promptSuggestions = adapterOptions.promptSuggestions ?? {
+    set: () => Effect.void,
+    clear: () => Effect.void,
+  };
 
   // Claude Code's own subagent TTL setting, in its precedence order. Unset or unreadable means
   // Anthropic's default applies.
@@ -7982,6 +7994,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const message = input.message;
+          // Arrives after the turn's `result`, so it is routed by the native
+          // session to the thread whose turn just ran rather than by the
+          // (already cleared) active turn.
+          if (message.type === "prompt_suggestion") {
+            const suggestion = message.suggestion.trim();
+            const routes = yield* Ref.get(lastTurnRouteByNativeThread);
+            const route =
+              routes.get(message.session_id) ??
+              (routes.size === 1 ? routes.values().next().value : undefined);
+            if (route !== undefined && suggestion.length > 0) {
+              yield* promptSuggestions.set(route.threadId, suggestion);
+            }
+            return;
+          }
           // Track before routing: idle-wake Monitors report tasks before replaying their tool calls.
           yield* trackClaudeMonitorCalls(message);
           // Update before routing because the idle wake gate reads this.
@@ -10048,6 +10074,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
               return updated;
             });
+            // The previous turn's suggestion no longer predicts anything.
+            yield* promptSuggestions.clear(turnInput.threadId);
             yield* rememberProviderThread(turnInput.providerThread);
             if (!goalsByNativeThread.has(nativeThreadId)) {
               goalsByNativeThread.set(nativeThreadId, turnInput.providerThread.goal ?? null);
@@ -11163,6 +11191,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     const queryRunner = yield* ClaudeAgentSdkQueryRunner;
     const serverConfig = yield* ServerConfig.ServerConfig;
     const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+    const promptSuggestions = yield* PromptSuggestions.PromptSuggestions;
     const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
     const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
     const path = yield* Path.Path;
@@ -11182,6 +11211,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
       idAllocator,
       queryRunner,
       continuationRequests,
+      promptSuggestions,
       ...hooks,
     });
   },

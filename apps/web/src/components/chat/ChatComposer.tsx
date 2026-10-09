@@ -181,6 +181,8 @@ import { rememberCopiedComposerAttachments } from "~/lib/copiedComposerAttachmen
 import { useThreadContextDrop, threadContextDropTargetProps } from "./threadContextDrag";
 import { readThreadShell } from "~/state/entities";
 import { useLinkedEnvironments } from "~/state/peerLinks";
+import { orchestrationEnvironment } from "~/state/orchestration";
+import { useEnvironmentQuery } from "~/state/query";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import type { ComposerContextRecord, ThreadPullRequestLink } from "@t3tools/contracts";
 import { threadContextAttachment } from "~/lib/threadContextAttachment";
@@ -1156,6 +1158,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   )
     ? "steer"
     : settings.followUpBehavior;
+  // Provider-predicted next prompt (Tab to accept). Touch viewports have no
+  // Tab key, so they never subscribe and keep the informative placeholder.
+  const promptSuggestionThreadId =
+    routeKind === "server" && !isMobileViewport ? activeThreadId : null;
+  const promptSuggestionQuery = useEnvironmentQuery(
+    promptSuggestionThreadId
+      ? orchestrationEnvironment.promptSuggestion({
+          environmentId,
+          input: { threadId: promptSuggestionThreadId },
+        })
+      : null,
+  );
+  const promptSuggestion = promptSuggestionThreadId ? (promptSuggestionQuery.data ?? null) : null;
+  // Ghost text only while the composer is idle and empty: any other composer
+  // state (approval, question, plan follow-up, draft text) owns the input.
+  const showPromptSuggestion =
+    promptSuggestion !== null &&
+    prompt.length === 0 &&
+    composerContextRecords.size === 0 &&
+    !isComposerApprovalState &&
+    activePendingProgress === null &&
+    pendingUserInputs.length === 0 &&
+    !(showPlanFollowUpPrompt && activeProposedPlan) &&
+    !isSendBusy &&
+    phase !== "running" &&
+    phase !== "disconnected";
   const composerSuggestionsVisible = composerMenuOpen;
   const composerSuggestionListVisible = composerSuggestionsVisible && composerMenuItems.length > 0;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
@@ -2188,6 +2216,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isLiteralPendingAnswer,
       pendingUserInputs,
       promptHistoryMessages,
+      promptSuggestion: showPromptSuggestion ? promptSuggestion : null,
       promptHistoryPositionRef,
       composerDraftTarget,
       promptRef,
@@ -3360,6 +3389,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCitationSubmitAndSend={submitCitationAndSendStable}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
+                    promptSuggestion={showPromptSuggestion ? promptSuggestion : null}
                     placeholder={
                       isComposerApprovalState
                         ? activePendingApproval?.supportsFeedback

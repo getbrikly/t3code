@@ -2,6 +2,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   type ThreadId,
   type OrchestrationGetTurnDiffResult,
+  WS_METHODS,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -92,6 +93,13 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
           ),
       }),
     },
+    // Provider-predicted next prompt for a thread: ephemeral server memory,
+    // null when there is none.
+    promptSuggestion: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:orchestration:prompt-suggestion",
+      tag: WS_METHODS.subscribePromptSuggestion,
+      idleTtlMs: 0,
+    }),
     turnDiff: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:turn-diff",
       tag: ORCHESTRATION_V2_WS_METHODS.getTurnDiff,

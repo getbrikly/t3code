@@ -2786,6 +2786,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         [];
       const continuationReceipts =
         yield* Queue.unbounded<ProviderContinuationRequests.ProviderContinuationRequest>();
+      const promptSuggestionWrites: Array<{
+        readonly threadId: string;
+        readonly suggestion: string | null;
+      }> = [];
       const terminalReceipts =
         yield* Queue.unbounded<
           Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn.terminal" }>
@@ -2828,6 +2832,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               Effect.andThen(Queue.offer(continuationReceipts, request)),
               Effect.andThen(changes.notify),
             ),
+        },
+        promptSuggestions: {
+          set: (threadId, suggestion) =>
+            Effect.sync(() => {
+              promptSuggestionWrites.push({ threadId, suggestion });
+            }),
+          clear: (threadId) =>
+            Effect.sync(() => {
+              promptSuggestionWrites.push({ threadId, suggestion: null });
+            }),
         },
         queryRunner: {
           allocateSessionId:
@@ -2977,6 +2991,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         liveSelectionChanges,
         continuationRequests,
         continuationReceipts,
+        promptSuggestionWrites,
         events,
         terminalReceipts,
         subagentReceipts,
@@ -4745,6 +4760,55 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         ),
       ),
     ),
+  );
+
+  it.effect(
+    "routes the post-result prompt suggestion to the thread and clears it on the next turn",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const start = (ordinal: number) =>
+          harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make(`attempt-claude-suggestion-${ordinal}`),
+              providerTurnOrdinal: ordinal,
+              text: "Fix the failing test.",
+              attachments: [],
+            }),
+          );
+        yield* start(1);
+        assert.equal(harness.getOpenedOptions()?.promptSuggestions, true);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000701", result: "Fixed." }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "prompt_suggestion",
+            suggestion: "  Run the full suite  ",
+            uuid: "00000000-0000-4000-8000-000000000702",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        assert.deepEqual(harness.promptSuggestionWrites.slice(-1), [
+          { threadId: harness.threadId, suggestion: "Run the full suite" },
+        ]);
+        // Not turn output: no timeline item, no continuation run.
+        assert.lengthOf(harness.continuationRequests, 0);
+        yield* start(2);
+        assert.deepEqual(harness.promptSuggestionWrites.slice(-1), [
+          { threadId: harness.threadId, suggestion: null },
+        ]);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
   );
 
   it.effect("announces usage-limit pauses once per window and again on a new turn", () =>

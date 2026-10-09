@@ -40,6 +40,8 @@ export function composerCommandKeyHandler(input: {
   readonly isLiteralPendingAnswer: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
   readonly promptHistoryMessages: ChatComposerProps["promptHistoryMessages"];
+  /** Visible ghost-text suggestion; null while the composer state hides it. */
+  readonly promptSuggestion: string | null;
   readonly promptHistoryPositionRef: RefObject<{
     targetKey: string;
     position: ComposerPromptHistoryPosition;
@@ -92,6 +94,7 @@ export function composerCommandKeyHandler(input: {
     isLiteralPendingAnswer,
     pendingUserInputs,
     promptHistoryMessages,
+    promptSuggestion,
     promptHistoryPositionRef,
     composerDraftTarget,
     promptRef,
@@ -211,6 +214,11 @@ export function composerCommandKeyHandler(input: {
         onSelectComposerItem(selectedItem);
         return true;
       }
+    }
+    // Plain Tab only: Shift+Tab keeps its plan-mode meaning above.
+    if (key === "Tab" && !event.shiftKey && submissionIntent === null && promptSuggestion) {
+      replacePromptFromHistory(promptSuggestion);
+      return true;
     }
     if ((key === "ArrowUp" || key === "ArrowDown") && submissionIntent === null) {
       return navigatePromptHistory(key === "ArrowUp" ? "backward" : "forward", event);
