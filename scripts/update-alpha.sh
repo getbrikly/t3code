@@ -54,7 +54,7 @@ echo "==> pnpm install"
 pnpm install --frozen-lockfile --config.confirmModulesPurge=false
 
 echo "==> building app (zip target)"
-node scripts/build-desktop-artifact.ts --platform mac --target zip --arch arm64
+pnpm exec node scripts/build-desktop-artifact.ts --platform mac --target zip --arch arm64
 
 zip_path="$(ls -t release/T3-Code-*-arm64.zip | head -n 1)"
 rm -rf release/alpha
