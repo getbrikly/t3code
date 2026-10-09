@@ -102,6 +102,7 @@ import {
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
+import { Kbd } from "~/components/ui/kbd";
 import { basenameOfPath } from "~/pierre-icons";
 import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
 import { FileTagChipContent } from "./chat/FileTagChip";
@@ -163,6 +164,11 @@ export interface ComposerPromptEditorProps {
   containerClassName?: string;
   className?: string;
   placeholderClassName?: string;
+  /**
+   * Provider-predicted next prompt. Rendered as ghost text in place of the
+   * placeholder while the editor is empty; the parent accepts it on Tab.
+   */
+  promptSuggestion?: string | null;
   onChange: (
     nextValue: string,
     nextCursor: number,
@@ -979,6 +985,7 @@ function ComposerPromptEditorTiptapInner(
     containerClassName,
     className,
     placeholderClassName,
+    promptSuggestion,
     onChange,
     onVisibleSelectionChange,
     onCommandKeyDown,
@@ -1149,7 +1156,9 @@ function ComposerPromptEditorTiptapInner(
             : {}),
         }
       : {}),
-    "aria-placeholder": placeholder,
+    "aria-placeholder": promptSuggestion
+      ? `Suggested: ${promptSuggestion}. Press Tab to accept.`
+      : placeholder,
   };
 
   const editor = useEditor(
@@ -1880,7 +1889,18 @@ function ComposerPromptEditorTiptapInner(
               onCopyCapture={(event) => handleCopyCut(event, false)}
               onCutCapture={(event) => handleCopyCut(event, true)}
             />
-            {isEmpty && contextRecords.size === 0 && placeholder ? (
+            {isEmpty && contextRecords.size === 0 && promptSuggestion ? (
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-0 flex items-baseline gap-2 leading-relaxed text-placeholder",
+                  placeholderClassName,
+                )}
+                data-testid="composer-prompt-suggestion"
+              >
+                <span className="min-w-0 truncate">{promptSuggestion}</span>
+                <Kbd className="shrink-0">Tab</Kbd>
+              </div>
+            ) : isEmpty && contextRecords.size === 0 && placeholder ? (
               <div
                 className={cn(
                   "pointer-events-none absolute inset-0 leading-relaxed text-placeholder/75",

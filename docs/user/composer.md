@@ -221,6 +221,17 @@ you had typed in the composer before starting the edit is restored afterwards. I
 message starts or is removed while you are editing, the edit ends: changed content moves into the
 composer when it is empty, and is discarded otherwise.
 
+## Suggested next prompt
+
+After a Claude turn finishes, T3 Code can show Claude's predicted next prompt as faded text in the
+empty composer. Press `Tab` to accept it into the composer, then edit or send it as usual. Start
+typing to ignore it. The suggestion disappears when the next turn starts.
+
+Suggestions come from Claude Code itself and follow your Claude settings: turning off **Prompt
+suggestions** in Claude Code (`promptSuggestionEnabled: false` in `settings.json`, or the
+`CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` environment variable) turns them off in T3 Code too.
+Other providers do not offer suggestions yet.
+
 ## Commands and skills
 
 Type `/` for commands or `$` to add a skill from the selected environment and
