@@ -55,6 +55,14 @@ if (( rebase )); then
   git log --oneline upstream/main..main
 fi
 
+# Release builds bake T3 Connect's public config (relay URL, Clerk keys) in from
+# CI variables; without them the app and remote servers have no T3 Connect,
+# so the mobile app cannot reach them. .env.example holds the production values.
+if [[ ! -f .env ]]; then
+  cp .env.example .env
+  echo "==> created .env from .env.example (T3 Connect public config)"
+fi
+
 echo "==> pnpm install"
 # confirmModulesPurge: a Node or pnpm bump otherwise stops on a TTY prompt.
 pnpm install --frozen-lockfile --config.confirmModulesPurge=false
