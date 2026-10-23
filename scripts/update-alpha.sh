@@ -2,9 +2,13 @@
 # Rebase the fork onto upstream main (what Nightly ships from) and build a
 # fresh "T3 Code (Alpha).app" for local install.
 #
-# Usage: scripts/update-alpha.sh [--no-rebase] [--push]
+# Usage: scripts/update-alpha.sh [--no-rebase] [--no-remote] [--push]
 #   --no-rebase  build the current checkout as-is
+#   --no-remote  skip installing the server on SSH hosts
 #   --push       force-push the rebased main to origin afterwards
+#
+# Also installs the matching server on each SSH host in $T3_FORK_REMOTES
+# (space-separated, default "cloud-machine") via scripts/update-remote.sh.
 #
 # Builds only the zip target (skips the slow DMG step), then unpacks it to
 # release/alpha/ and reveals the .app in Finder. Installing it into
@@ -12,10 +16,12 @@
 set -euo pipefail
 
 rebase=1
+remote=1
 push=0
 for arg in "$@"; do
   case "$arg" in
     --no-rebase) rebase=0 ;;
+    --no-remote) remote=0 ;;
     --push) push=1 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
@@ -62,6 +68,11 @@ mkdir -p release/alpha
 ditto -x -k "$zip_path" release/alpha
 app_path="$(find release/alpha -maxdepth 1 -name '*.app' | head -n 1)"
 echo "==> built: $app_path (from $zip_path)"
+
+if (( remote )); then
+  # shellcheck disable=SC2086 # word-split the host list
+  scripts/update-remote.sh ${T3_FORK_REMOTES:-cloud-machine}
+fi
 
 if (( push )); then
   git push --force-with-lease origin main
