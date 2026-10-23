@@ -42,11 +42,12 @@ fi
 
 # build-cli-archive passes GNU tar's --hard-dereference for Linux archives (the
 # npm registry rejects hard links). macOS bsdtar lacks it and nothing here is
-# published to npm, so drop the flag.
+# published to npm, so drop the flag. Also leave out macOS xattrs, which GNU
+# tar on the host warns about for every file.
 cat >"$work_dir/bin/tar" <<'SH'
 #!/usr/bin/env bash
 args=(); for a in "$@"; do [[ $a == --hard-dereference ]] || args+=("$a"); done
-exec /usr/bin/tar "${args[@]}"
+exec /usr/bin/tar --no-xattrs --no-mac-metadata "${args[@]}"
 SH
 chmod +x "$work_dir/bin/tar"
 PATH="$repo_root/$work_dir/bin:$PATH" pnpm exec node scripts/build-cli-archive.ts \
@@ -69,31 +70,50 @@ rm -f "$archive"
 "$staging/t3" --version >/dev/null
 printf '%s\n' "$version" >"$staging/.install-complete"
 
+service_installed=0
+systemctl --user cat t3code.service >/dev/null 2>&1 && service_installed=1
+
 # A same-version rebuild does not change the launcher's runner, so it would
 # keep reusing a server already running from this version. Stop only the
 # servers the launcher recorded at spawn; the app relaunches on reconnect.
-for state in "$HOME"/.t3/ssh-launch/*/; do
-  [ "$(cat "$state/managed" 2>/dev/null)" = managed ] || continue
-  pid="$(cat "$state/pid" 2>/dev/null)" || continue
-  exe="$(readlink "/proc/$pid/exe" 2>/dev/null)" || continue
-  case "$exe" in
-    "$versions/$version/"*)
-      kill "$pid"
-      i=0
-      while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.2; done
-      echo "stopped server $pid (reconnect the app to start the new one)"
-      ;;
-  esac
-done
+# With a background service the app adopts the service's server instead,
+# and the service is restarted below.
+if [ "$service_installed" = 0 ]; then
+  for state in "$HOME"/.t3/ssh-launch/*/; do
+    [ "$(cat "$state/managed" 2>/dev/null)" = managed ] || continue
+    pid="$(cat "$state/pid" 2>/dev/null)" || continue
+    exe="$(readlink "/proc/$pid/exe" 2>/dev/null)" || continue
+    case "$exe" in
+      "$versions/$version/"*)
+        kill "$pid"
+        i=0
+        while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.2; done
+        echo "stopped server $pid (reconnect the app to start the new one)"
+        ;;
+    esac
+  done
+fi
 
-rm -rf "$versions/$version"
-mv "$staging" "$versions/$version"
+service_version="$(sed -n 's/.*"activeVersion": *"\([^"]*\)".*/\1/p' "$HOME/.t3/runtime/service-state.json" 2>/dev/null || true)"
+if [ "$service_installed" = 1 ] && [ "$service_version" = "$version" ]; then
+  # The service runs from this directory; swap it underneath and restart.
+  mv "$versions/$version" "$versions/.replaced-$version-$$"
+  mv "$staging" "$versions/$version"
+  "$versions/$version/t3" service restart --base-dir "$HOME/.t3"
+  rm -rf "$versions/.replaced-$version-$$"
+else
+  rm -rf "$versions/$version"
+  mv "$staging" "$versions/$version"
+  if [ "$service_installed" = 1 ]; then
+    "$versions/$version/t3" service install --base-dir "$HOME/.t3"
+  fi
+fi
 
-# Prune other versions unless a server is still running from one.
+# Prune other versions unless something (service, launcher-managed server,
+# agent subprocess) still runs from one.
 in_use=""
-for state in "$HOME"/.t3/ssh-launch/*/; do
-  pid="$(cat "$state/pid" 2>/dev/null)" || continue
-  in_use="$in_use $(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+for exe in /proc/[0-9]*/exe; do
+  in_use="$in_use $(readlink "$exe" 2>/dev/null || true)"
 done
 for dir in "$versions"/*/; do
   dir="${dir%/}"
